@@ -218,8 +218,16 @@ class GraphQLClient:
         variables: Dict[str, Any],
         query: str = None,
         module_name: str = "harness_engineering",
+        timeout_seconds: float = None,
     ) -> Dict[str, Any]:
-        """Execute a GraphQL query or mutation."""
+        """Execute a GraphQL query or mutation.
+
+        ``timeout_seconds`` overrides the default 60s timeout for operations
+        that may legitimately take longer (e.g. ``runCommand`` mutations that
+        trigger a git-refresh on the backend before executing the command).
+        When None, falls back to ``command_timeout_seconds`` from the module
+        setting for mutations, or 60s for queries.
+        """
         try:
             graphql_module = self.get_graphql_module(module_name)
             if query is None:
@@ -246,7 +254,24 @@ class GraphQLClient:
 
             token = graphql_module.get_gateway_token()
 
-            timeout = httpx.Timeout(60.0, connect=15.0)
+            # Determine the timeout: explicit override > mutation default >
+            # 60s base. The mutation default is configurable via the module
+            # setting ``command_timeout_seconds`` (default 120s) to give
+            # runCommand enough budget for a git-refresh + command execution.
+            if timeout_seconds is not None:
+                effective_timeout = timeout_seconds
+            elif operation_type == "Mutation":
+                module_setting = (
+                    self.setting.get("graphql_modules", {})
+                    .get(module_name, {})
+                )
+                effective_timeout = float(
+                    module_setting.get("command_timeout_seconds", 120.0)
+                )
+            else:
+                effective_timeout = 60.0
+
+            timeout = httpx.Timeout(effective_timeout, connect=15.0)
             with httpx.Client(http2=True, timeout=timeout) as client:
                 response = client.post(
                     graphql_module.endpoint,

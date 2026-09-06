@@ -64,8 +64,12 @@ class SkillMixin(GraphQLBackedProcessor):
         """
         Get full instructions and metadata for a skill.
 
-        Maps to GraphQL: skill query.  Triggers on-demand local refresh from
+        Maps to GraphQL: skill query.  Triggers on-demand git refresh from
         S3 when the local skill directory is missing or stale.
+
+        When a background git refresh is in progress, the backend returns
+        ``status: "refreshing"`` with an empty body. The caller should
+        retry after a short wait to get the full content.
         """
         variables = {"name": arguments.get("name")}
 
@@ -90,4 +94,15 @@ class SkillMixin(GraphQLBackedProcessor):
             )
 
         humps.decamelize(skill)
+
+        # Surface the refreshing status so the LLM knows to retry.
+        # When status is "refreshing", body will be empty — the caller
+        # should call get_skill again after a short wait.
+        if skill.get("status") == "refreshing":
+            return build_error_response(
+                f"Skill '{variables['name']}' is being refreshed from git. "
+                f"Retry get_skill after a short wait to get the full content.",
+                ErrorCode.OPERATION_FAILED,
+            )
+
         return skill

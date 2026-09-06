@@ -37,10 +37,14 @@ class CommandMixin(GraphQLBackedProcessor):
 
         ``run_command`` validates argv against the skill's ``allowed_commands``
         list server-side, runs without a shell, and enforces timeout + output caps.
+
+        When ``background`` is True, the command is launched detached and a
+        ``run_id`` is returned for polling via ``poll_command``.
         """
         name = arguments.get("name")
         argv = arguments.get("argv")
         workspace_scope = arguments.get("workspace_scope")
+        background = arguments.get("background", False)
 
         if not name:
             raise ValidationError("name is required", ErrorCode.MISSING_REQUIRED_FIELD)
@@ -52,6 +56,8 @@ class CommandMixin(GraphQLBackedProcessor):
         variables: Dict[str, Any] = {"name": name, "argv": argv}
         if workspace_scope:
             variables["workspaceScope"] = workspace_scope
+        if background:
+            variables["background"] = True
 
         result = self._execute_graphql_query(
             "harness_graphql",
@@ -71,3 +77,37 @@ class CommandMixin(GraphQLBackedProcessor):
 
         humps.decamelize(run_result)
         return run_result
+
+    # * MCP Function.
+    @handle_errors(operation_name="poll command")
+    def poll_command(self, **arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Poll the status of a background command launched by ``run_command``
+        with ``background=true``.
+
+        Maps to GraphQL: pollCommand query.
+        """
+        run_id = arguments.get("run_id")
+
+        if not run_id:
+            raise ValidationError("run_id is required", ErrorCode.MISSING_REQUIRED_FIELD)
+
+        variables = {"run_id": run_id}
+
+        result = self._execute_graphql_query(
+            "harness_graphql",
+            "pollCommand",
+            "Query",
+            variables,
+        )
+
+        if error := propagate_error_if_present(result):
+            return error
+
+        poll_result = result.get("pollCommand", {})
+
+        if error := propagate_error_if_present(poll_result):
+            return error
+
+        humps.decamelize(poll_result)
+        return poll_result
