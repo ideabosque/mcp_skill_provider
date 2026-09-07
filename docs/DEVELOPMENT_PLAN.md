@@ -2,7 +2,7 @@
 
 > **Location:** `C:\Users\bibo7\gitrepo\silvaengine\mcp_skill_provider`
 > **Date:** 2026-09-06
-> **Status:** v0.0.1 package scaffold complete; runtime registration with `mcp_daemon_engine` wired (P1.5 done) — integration testing (P2) not yet started; reviewed against harness_engineering_engine P8/P9 changes (2026-09-06)
+> **Status:** v0.0.1 package scaffold complete; runtime registration with `mcp_daemon_engine` wired (P1.5 done); P2 live end-to-end certification run completed 2026-09-07 — **Ready for UAT** (see `docs/test_results/integration_certification_report.md`). Found and fixed 4 real defects (DEF-001, 002, 004, 006) that had made every tool call fail silently or incorrectly against a live backend — none remain open; reviewed against harness_engineering_engine P8/P9 changes (2026-09-06)
 
 ---
 
@@ -25,7 +25,8 @@ The provider holds no skill data of its own — it delegates all reads and write
 Verified against the sibling `mcp_daemon_engine` and `harness_engineering_engine` repos on 2026-08-25; updated 2026-09-06 to reflect `harness_engineering_engine` P8 (recursive skill discovery + CLI package auto-install) and P9 (reference files + LLM-assisted section generation):
 
 1. ~~`MCP_CONFIGURATION` has no `modules` / `module_links` entries.~~ **Fixed (P1.5).** `mcp_daemon_engine.handlers.mcp_utility.execute_tool_function` resolves a tool call to a class instance by looking up `config["module_links"]` (maps a tool `name` → `module_name`/`class_name`/`function_name`) and `config["modules"]` (maps `module_name`/`class_name` → `package_name`, `source`, `setting`). `mcp_configuration.py` now declares both blocks, pointing all three tools at `mcp_skill_provider.mcp_skill_provider.MCPSkillProvider` with `package_name="mcp_skill_provider"`, `source=""`. Verified by running `mcp_daemon_engine.handlers.mcp_handlers.validate_manifest()` directly against the manifest — passes. Real GraphQL endpoint/credential values are supplied at registration time via `loadMcpConfiguration`'s `variables` argument, which overrides the placeholder `setting.graphql_modules` values declared here.
-2. **`HSK_GRAPHQL_ENDPOINT` is documented but not implemented.** `graphql_client.py` never reads environment variables — `GraphQLClient`/`GraphQLModule` are configured entirely from the `setting` dict passed into the constructor. Standalone/local testing today means constructing `MCPSkillProvider` with an explicit `graphql_modules.harness_engineering.endpoint`, not setting an env var. Either implement the env var fallback or drop the row from Configuration/README so the docs don't promise a knob that doesn't exist.
+1a. ~~`graphql_modules` key/`class_name` couldn't actually resolve the backend schema (DEF-001).~~ **Fixed (2026-09-06).** Found during the P2 SOP dry-run (`docs/integration_scenarios_sop.md` INT-004): `graphql_client.py` used `"harness_engineering"` as both the `graphql_modules` config key and the default `module_name` argument passed to `silvaengine_utility.Graphql.get_graphql_schema()` — but that function does a real `importlib.import_module()`/`find_spec()` on `module_name`, and the installed package is `harness_engineering_engine`, not `harness_engineering`. Every tool call (`search_skills`, `get_skill`, `run_command`, `poll_command`) relies on this auto-generated schema, so all four failed with `ModuleNotFoundError`, wrapped as `GRAPHQL_QUERY_FAILED`, regardless of whether the backend was reachable. Confirmed by checking how every other MCP module in the monorepo does this — `mcp_rfq_processor` keys `graphql_modules` as `"ai_rfq_engine"` (the real package name) with a bare `class_name: "AIRFQEngine"`; `mcp_marketing_collection` does the same with `"ai_marketing_engine"` / `"AIMarketingEngine"` — because `Invoker.resolve_proxied_callable` does a plain `getattr(imported_module, class_name)`, not a dotted-path lookup, so `class_name` must be an attribute exported at the *top level* of `module_name`'s `__init__.py`. **Applied:** renamed the key/default `module_name` to `"harness_engineering_engine"` in `mcp_configuration.py` and `graphql_client.py`; changed `class_name` from the dotted `"harness_engineering_engine.main.HarnessEngineeringEngine"` to the bare `"HarnessEngineeringEngine"`; and — since `harness_engineering_engine/__init__.py` didn't export the class at top level (unlike `ai_marketing_engine`) — added `from .main import HarnessEngineeringEngine, deploy` there, mirroring `ai_marketing_engine/__init__.py` exactly. Verified live: `Graphql.get_graphql_schema(module_name="harness_engineering_engine", class_name="HarnessEngineeringEngine")` now resolves through the real `Invoker` import chain and returns a real introspected schema (33 types).
+2. **`HSK_GRAPHQL_ENDPOINT` is documented but not implemented.** `graphql_client.py` never reads environment variables — `GraphQLClient`/`GraphQLModule` are configured entirely from the `setting` dict passed into the constructor. Standalone/local testing today means constructing `MCPSkillProvider` with an explicit `graphql_modules.harness_engineering_engine.endpoint`, not setting an env var. Either implement the env var fallback or drop the row from Configuration/README so the docs don't promise a knob that doesn't exist.
 3. **`endpoint_id` / `part_id` are not `setting` keys.** At runtime, `mcp_daemon_engine` sets these on the tool instance *after* construction, by splitting the caller's `partition_key` on `#` (see `execute_tool_function`) — they are never part of the `setting` kwargs dict. `connection_id` isn't read anywhere in this codebase at all. The Configuration example below has been corrected to match.
 4. **Fixed (2026-09-06).** ~~No `runCommand` timeout budget — 60s GraphQL ceiling races with git-refresh + command.~~ `graphql_client.py::GraphQLClient.execute_query` used a flat `httpx.Timeout(60.0, connect=15.0)` for all operations, including `runCommand`, whose backend call first triggers a git clone on a cache miss — a slow remote could consume most of the 60s budget and fail at the HTTP layer with a generic timeout, not a "still loading skill" message. **Applied:** `execute_query` now accepts a per-call `timeout_seconds` override and defaults mutations to a configurable `command_timeout_seconds` module setting (default 120s), leaving queries at 60s. Superseded in practice by gap 2's fix below (`skill()` no longer blocks on the clone at all), but the wider timeout budget stays as a safety margin for the command execution itself.
 5. **Fixed (2026-09-06).** ~~`get_skill` tool description doesn't guide the LLM to use `allowed_commands`.~~ **Applied** — see gap 8 below (same fix, same commit).
@@ -58,7 +59,7 @@ GraphQLBackedProcessor
   │
   ▼
 GraphQLClient.execute_query()
-  │── HTTP/2 POST to graphql_modules.harness_engineering.endpoint
+  │── HTTP/2 POST to graphql_modules.harness_engineering_engine.endpoint
   │── Auth: silvaengine_gateway JWT Bearer or x-api-key
   │
   ▼
@@ -126,8 +127,8 @@ mcp_skill_provider/
 ```python
 {
     "graphql_modules": {
-        "harness_engineering": {
-            "class_name": "harness_engineering_engine.main.HarnessEngineeringEngine",
+        "harness_engineering_engine": {
+            "class_name": "HarnessEngineeringEngine",
             "endpoint": "https://{endpoint_id}.execute-api.us-east-1.amazonaws.com/dev/graphql",
             "x_api_key": "...",
             "gateway_base_url": "https://gateway.example.com",
@@ -147,7 +148,7 @@ There is currently no environment-variable override — `GraphQLClient` reads on
 ```python
 provider = MCPSkillProvider(
     logger,
-    graphql_modules={"harness_engineering": {"endpoint": "http://localhost:8000/graphql"}},
+    graphql_modules={"harness_engineering_engine": {"endpoint": "http://localhost:8000/graphql"}},
 )
 ```
 
@@ -184,7 +185,7 @@ Deliver:
 Closed a prerequisite for P2 (see [Known Gaps](#known-gaps) item 1) — without it, `mcp_daemon_engine` had no way to route a tool call to `MCPSkillProvider`.
 
 Delivered:
-- `modules` block in `mcp_configuration.py` declaring `module_name: "mcp_skill_provider"`, `class_name: "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider"`, `package_name: "mcp_skill_provider"`, `source: ""`, and a placeholder `setting.graphql_modules.harness_engineering` shape
+- `modules` block in `mcp_configuration.py` declaring `module_name: "mcp_skill_provider"`, `class_name: "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider"`, `package_name: "mcp_skill_provider"`, `source: ""`, and a placeholder `setting.graphql_modules.harness_engineering_engine` shape
 - `module_links` block mapping each of `search_skills`, `get_skill`, `run_command` (`type: "tool"`) to that module and its matching `function_name`
 
 **Exit criteria:**

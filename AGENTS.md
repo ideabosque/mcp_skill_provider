@@ -32,7 +32,7 @@ mcp_skill_provider/
 - Class: `mcp_skill_provider.mcp_skill_provider.MCPSkillProvider`
 - Three functions: `search_skills`, `get_skill`, `run_command`
 
-`GraphQLClient.execute_query()` posts to the module's configured `graphql_modules.harness_engineering.endpoint` with either a silvaengine_gateway JWT Bearer token (preferred) or `x-api-key` header.
+`GraphQLClient.execute_query()` posts to the module's configured `graphql_modules.harness_engineering_engine.endpoint` with either a silvaengine_gateway JWT Bearer token (preferred) or `x-api-key` header. The `graphql_modules` key must match the real importable backend package name (`harness_engineering_engine`) — `Graphql.get_graphql_schema()` does a real `importlib` lookup on it, and `class_name` must be a bare attribute exported at that package's top level (`HarnessEngineeringEngine`), not a dotted path.
 
 ### Code Style
 

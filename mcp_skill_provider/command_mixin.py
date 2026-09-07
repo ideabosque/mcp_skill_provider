@@ -69,13 +69,14 @@ class CommandMixin(GraphQLBackedProcessor):
         if error := propagate_error_if_present(result):
             return error
 
-        run_result = result.get("runCommand", {})
+        # ``execute_query`` already unwraps ``data.runCommand`` — ``result``
+        # *is* the runCommand payload, not an envelope containing it.
+        run_result = humps.decamelize(result) if isinstance(result, dict) else result
 
         # If the backend returned an error field, propagate it.
         if error := propagate_error_if_present(run_result):
             return error
 
-        humps.decamelize(run_result)
         return run_result
 
     # * MCP Function.
@@ -104,10 +105,11 @@ class CommandMixin(GraphQLBackedProcessor):
         if error := propagate_error_if_present(result):
             return error
 
-        poll_result = result.get("pollCommand", {})
+        # ``execute_query`` already unwraps ``data.pollCommand`` — ``result``
+        # *is* the pollCommand payload, not an envelope containing it.
+        poll_result = humps.decamelize(result) if isinstance(result, dict) else result
 
         if error := propagate_error_if_present(poll_result):
             return error
 
-        humps.decamelize(poll_result)
         return poll_result

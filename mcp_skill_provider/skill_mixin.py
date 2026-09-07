@@ -49,9 +49,10 @@ class SkillMixin(GraphQLBackedProcessor):
         if error := propagate_error_if_present(result):
             return error
 
-        skills = result.get("searchSkills", {})
-        for skill in skills.get("items", []):
-            humps.decamelize(skill)
+        # ``execute_query`` already unwraps ``data.searchSkills`` — ``result``
+        # *is* the searchSkills payload (``skillList``/``total``/...), not an
+        # envelope containing it.
+        skills = humps.decamelize(result) if isinstance(result, dict) else result
 
         message = no_result_message(skills, "No skills found matching the query.")
         if message:
@@ -86,14 +87,15 @@ class SkillMixin(GraphQLBackedProcessor):
         if error := propagate_error_if_present(result):
             return error
 
-        skill = result.get("skill")
-        if skill is None:
+        # ``execute_query`` already unwraps ``data.skill`` — ``result`` *is*
+        # the skill object itself, not an envelope containing it.
+        if result is None:
             return build_error_response(
                 f"Skill '{variables['name']}' not found.",
                 ErrorCode.SKILL_NOT_FOUND,
             )
 
-        humps.decamelize(skill)
+        skill = humps.decamelize(result)
 
         # Surface the refreshing status so the LLM knows to retry.
         # When status is "refreshing", body will be empty — the caller

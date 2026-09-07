@@ -83,7 +83,7 @@ MCP_CONFIGURATION = {
     "modules": [
         {
             "module_name": "mcp_skill_provider",
-            "class_name": "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider",
+            "class_name": "MCPSkillProvider",
             "package_name": "mcp_skill_provider",
             "source": "",
             # Default setting shape. Real endpoint/credential values are
@@ -91,8 +91,8 @@ MCP_CONFIGURATION = {
             # `variables` argument, which overrides this wholesale.
             "setting": {
                 "graphql_modules": {
-                    "harness_engineering": {
-                        "class_name": "harness_engineering_engine.main.HarnessEngineeringEngine",
+                    "harness_engineering_engine": {
+                        "class_name": "HarnessEngineeringEngine",
                         "endpoint": "",
                         "x_api_key": "",
                         "gateway_base_url": "",
@@ -113,28 +113,28 @@ MCP_CONFIGURATION = {
             "name": "search_skills",
             "type": "tool",
             "module_name": "mcp_skill_provider",
-            "class_name": "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider",
+            "class_name": "MCPSkillProvider",
             "function_name": "search_skills",
         },
         {
             "name": "get_skill",
             "type": "tool",
             "module_name": "mcp_skill_provider",
-            "class_name": "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider",
+            "class_name": "MCPSkillProvider",
             "function_name": "get_skill",
         },
         {
             "name": "run_command",
             "type": "tool",
             "module_name": "mcp_skill_provider",
-            "class_name": "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider",
+            "class_name": "MCPSkillProvider",
             "function_name": "run_command",
         },
         {
             "name": "poll_command",
             "type": "tool",
             "module_name": "mcp_skill_provider",
-            "class_name": "mcp_skill_provider.mcp_skill_provider.MCPSkillProvider",
+            "class_name": "MCPSkillProvider",
             "function_name": "poll_command",
         },
     ],

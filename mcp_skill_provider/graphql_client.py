@@ -17,6 +17,7 @@ import traceback
 from typing import Any, Dict
 
 import httpx
+import humps
 
 from silvaengine_utility.graphql import Graphql
 from silvaengine_utility.serializer import Serializer
@@ -163,6 +164,17 @@ class GraphQLClient:
     def __init__(self, logger: logging.Logger, **setting: Dict[str, Any]):
         self.logger = logger
         self.setting = setting
+        # ``setting`` may arrive freshly persisted via mcp_daemon_engine's
+        # loadMcpConfiguration, which stores it through the JSONCamelCase
+        # GraphQL scalar — every nested key (including this dict's own
+        # per-backend keys like "harness_engineering_engine" and their
+        # "token_username"/"class_name" fields) comes back camelCased. A
+        # directly-constructed setting dict (e.g. in tests) is already
+        # snake_case, so decamelizing here is a no-op for that path.
+        if isinstance(self.setting.get("graphql_modules"), dict):
+            self.setting["graphql_modules"] = humps.decamelize(
+                self.setting["graphql_modules"]
+            )
         self._endpoint_id = None
         self._part_id = None
         self._graphql_modules: Dict[str, GraphQLModule] = {}
@@ -206,7 +218,7 @@ class GraphQLClient:
             )
         return self._graphql_modules.get(module_name)
 
-    def get_gateway_token(self, module_name: str = "harness_engineering") -> str | None:
+    def get_gateway_token(self, module_name: str = "harness_engineering_engine") -> str | None:
         """Obtain the JWT Bearer token for ``module_name``."""
         return self.get_graphql_module(module_name).get_gateway_token()
 
@@ -217,7 +229,7 @@ class GraphQLClient:
         operation_type: str,
         variables: Dict[str, Any],
         query: str = None,
-        module_name: str = "harness_engineering",
+        module_name: str = "harness_engineering_engine",
         timeout_seconds: float = None,
     ) -> Dict[str, Any]:
         """Execute a GraphQL query or mutation.
