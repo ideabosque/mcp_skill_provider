@@ -64,8 +64,8 @@ class SkillMixin(GraphQLBackedProcessor):
         """
         Get full instructions and metadata for a skill.
 
-        Maps to GraphQL: skill query.  Triggers on-demand git refresh from
-        S3 when the local skill directory is missing or stale.
+        Maps to GraphQL: skill query.  Triggers on-demand git refresh when
+        the local skill directory is missing or stale.
 
         When a background git refresh is in progress, the backend returns
         ``status: "refreshing"`` with an empty body. The caller should
