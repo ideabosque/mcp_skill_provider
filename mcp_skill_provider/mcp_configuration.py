@@ -4,6 +4,27 @@
 
 __author__ = "bibow"
 
+import os
+
+
+def _int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+_GATEWAY_BASE_URL = os.getenv("MCP_SKILL_PROVIDER_GATEWAY_BASE_URL") or os.getenv(
+    "BASE_URL", "http://localhost:8765"
+)
+_HARNESS_GRAPHQL_ENDPOINT = os.getenv(
+    "MCP_SKILL_PROVIDER_HARNESS_GRAPHQL_ENDPOINT",
+    f"{_GATEWAY_BASE_URL.rstrip('/')}/{{endpoint_id}}/harness_graphql",
+)
+
 MCP_CONFIGURATION = {
     "tools": [
         {
@@ -86,23 +107,34 @@ MCP_CONFIGURATION = {
             "class_name": "MCPSkillProvider",
             "package_name": "mcp_skill_provider",
             "source": "",
-            # Default setting shape. Real endpoint/credential values are
-            # supplied at registration time via loadMcpConfiguration's
-            # `variables` argument, which overrides this wholesale.
+            # Default setting shape. Values come from the gateway environment
+            # during Git deployment, so the generic deploy_mcp_git.py script can
+            # install this package without a one-off variables wrapper.
+            # loadMcpConfiguration variables can still override this wholesale.
             "setting": {
                 "graphql_modules": {
                     "harness_engineering_engine": {
                         "class_name": "HarnessEngineeringEngine",
-                        "endpoint": "",
-                        "x_api_key": "",
-                        "gateway_base_url": "",
-                        "token_username": "",
-                        "token_password": "",
+                        "endpoint": _HARNESS_GRAPHQL_ENDPOINT,
+                        "x_api_key": os.getenv(
+                            "MCP_SKILL_PROVIDER_HARNESS_X_API_KEY",
+                            os.getenv("x-api-key", ""),
+                        ),
+                        "gateway_base_url": _GATEWAY_BASE_URL,
+                        "token_username": os.getenv(
+                            "MCP_SKILL_PROVIDER_TOKEN_USERNAME",
+                            os.getenv("ADMIN_USERNAME", ""),
+                        ),
+                        "token_password": os.getenv(
+                            "MCP_SKILL_PROVIDER_TOKEN_PASSWORD",
+                            os.getenv("ADMIN_PASSWORD", ""),
+                        ),
                         # Timeout (seconds) for mutation operations that may
                         # take longer than the 60s query default — runCommand
-                        # triggers a git-refresh on cache miss before executing
-                        # the command. Override via loadMcpConfiguration variables.
-                        "command_timeout_seconds": 120,
+                        # triggers a git-refresh on cache miss before executing.
+                        "command_timeout_seconds": _int_env(
+                            "MCP_SKILL_PROVIDER_COMMAND_TIMEOUT_SECONDS", 120
+                        ),
                     }
                 }
             },
